@@ -1,17 +1,27 @@
 "use strict";
 
-const { ObjectId } = require("mongodb"); // Assuming you're using MongoDB for database operations
+const mongoose = require("mongoose");
+const { Schema } = mongoose;
 
-module.exports = function (app, db) {
+// Define a schema for the book
+const bookSchema = new Schema({
+  title: { type: String, required: true },
+  comments: [String], // Array of comments as strings
+});
+
+// Create a Mongoose model based on the schema
+const Book = mongoose.model("Book", bookSchema);
+
+module.exports = function (app) {
   app
     .route("/api/books")
     .get(async function (req, res) {
       try {
-        const books = await db.collection("books").find().toArray();
+        const books = await Book.find();
         const response = books.map((book) => ({
           _id: book._id,
           title: book.title,
-          commentcount: book.comments.length, // Assuming comments are stored as an array in each book document
+          commentcount: book.comments.length,
         }));
         res.json(response);
       } catch (err) {
@@ -27,10 +37,9 @@ module.exports = function (app, db) {
       }
 
       try {
-        const result = await db
-          .collection("books")
-          .insertOne({ title, comments: [] });
-        res.json({ _id: result.insertedId, title });
+        const newBook = new Book({ title, comments: [] });
+        await newBook.save();
+        res.json({ _id: newBook._id, title });
       } catch (err) {
         console.error(err);
         res.status(500).send("Internal Server Error");
@@ -39,7 +48,7 @@ module.exports = function (app, db) {
 
     .delete(async function (req, res) {
       try {
-        await db.collection("books").deleteMany({});
+        await Book.deleteMany({});
         res.send("complete delete successful");
       } catch (err) {
         console.error(err);
@@ -52,9 +61,7 @@ module.exports = function (app, db) {
     .get(async function (req, res) {
       const { id } = req.params;
       try {
-        const book = await db
-          .collection("books")
-          .findOne({ _id: ObjectId(id) });
+        const book = await Book.findById(id);
         if (!book) {
           return res.send("no book exists");
         }
@@ -77,20 +84,18 @@ module.exports = function (app, db) {
       }
 
       try {
-        const result = await db
-          .collection("books")
-          .findOneAndUpdate(
-            { _id: ObjectId(id) },
-            { $push: { comments: comment } },
-            { returnOriginal: false }
-          );
-        if (!result.value) {
+        const book = await Book.findById(id);
+        if (!book) {
           return res.send("no book exists");
         }
+
+        book.comments.push(comment);
+        await book.save();
+
         res.json({
-          _id: result.value._id,
-          title: result.value.title,
-          comments: result.value.comments,
+          _id: book._id,
+          title: book.title,
+          comments: book.comments,
         });
       } catch (err) {
         console.error(err);
@@ -101,9 +106,7 @@ module.exports = function (app, db) {
     .delete(async function (req, res) {
       const { id } = req.params;
       try {
-        const result = await db
-          .collection("books")
-          .deleteOne({ _id: ObjectId(id) });
+        const result = await Book.deleteOne({ _id: id });
         if (result.deletedCount === 0) {
           return res.send("no book exists");
         }
