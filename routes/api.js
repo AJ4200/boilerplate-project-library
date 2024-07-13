@@ -6,11 +6,19 @@ let books = [
   { _id: 3, title: "Book 3", commentcount: 0, comments: [] },
 ];
 
+let currentId = 3;
+
 module.exports = function (app) {
   app
     .route("/api/books")
     .get(function (req, res) {
-      res.json(books);
+      res.json(
+        books.map((book) => ({
+          _id: book._id,
+          title: book.title,
+          commentcount: book.commentcount,
+        }))
+      );
     })
     .post(function (req, res) {
       let title = req.body.title;
@@ -20,7 +28,7 @@ module.exports = function (app) {
           .json({ message: "missing required field title" });
       }
       let newBook = {
-        _id: Date.now(),
+        _id: ++currentId,
         title: title,
         commentcount: 0,
         comments: [],
