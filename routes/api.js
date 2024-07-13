@@ -1,76 +1,116 @@
 "use strict";
 
-let books = [
-  { _id: 1, title: "Book 1", commentcount: 0, comments: [] },
-  { _id: 2, title: "Book 2", commentcount: 0, comments: [] },
-  { _id: 3, title: "Book 3", commentcount: 0, comments: [] },
-];
+const { ObjectId } = require("mongodb"); // Assuming you're using MongoDB for database operations
 
-let currentId = 3;
-
-module.exports = function (app) {
+module.exports = function (app, db) {
   app
     .route("/api/books")
-    .get(function (req, res) {
-      res.json(
-        books.map((book) => ({
+    .get(async function (req, res) {
+      try {
+        const books = await db.collection("books").find().toArray();
+        const response = books.map((book) => ({
           _id: book._id,
           title: book.title,
-          commentcount: book.commentcount,
-        }))
-      );
-    })
-    .post(function (req, res) {
-      let title = req.body.title;
-      if (!title) {
-        return res
-          .status(400)
-          .json({ message: "missing required field title" });
+          commentcount: book.comments.length, // Assuming comments are stored as an array in each book document
+        }));
+        res.json(response);
+      } catch (err) {
+        console.error(err);
+        res.status(500).send("Internal Server Error");
       }
-      let newBook = {
-        _id: ++currentId,
-        title: title,
-        commentcount: 0,
-        comments: [],
-      };
-      books.push(newBook);
-      res.json(newBook);
     })
-    .delete(function (req, res) {
-      books = [];
-      res.json({ message: "complete delete successful" });
+
+    .post(async function (req, res) {
+      const { title } = req.body;
+      if (!title) {
+        return res.send("missing required field title");
+      }
+
+      try {
+        const result = await db
+          .collection("books")
+          .insertOne({ title, comments: [] });
+        res.json({ _id: result.insertedId, title });
+      } catch (err) {
+        console.error(err);
+        res.status(500).send("Internal Server Error");
+      }
+    })
+
+    .delete(async function (req, res) {
+      try {
+        await db.collection("books").deleteMany({});
+        res.send("complete delete successful");
+      } catch (err) {
+        console.error(err);
+        res.status(500).send("Internal Server Error");
+      }
     });
 
   app
     .route("/api/books/:id")
-    .get(function (req, res) {
-      let book = books.find((b) => b._id === parseInt(req.params.id));
-      if (!book) {
-        return res.status(404).json({ message: "no book exists" });
+    .get(async function (req, res) {
+      const { id } = req.params;
+      try {
+        const book = await db
+          .collection("books")
+          .findOne({ _id: ObjectId(id) });
+        if (!book) {
+          return res.send("no book exists");
+        }
+        res.json({
+          _id: book._id,
+          title: book.title,
+          comments: book.comments,
+        });
+      } catch (err) {
+        console.error(err);
+        res.status(500).send("Internal Server Error");
       }
-      res.json(book);
     })
-    .post(function (req, res) {
-      let book = books.find((b) => b._id === parseInt(req.params.id));
-      if (!book) {
-        return res.status(404).json({ message: "no book exists" });
-      }
-      let comment = req.body.comment;
+
+    .post(async function (req, res) {
+      const { id } = req.params;
+      const { comment } = req.body;
       if (!comment) {
-        return res
-          .status(400)
-          .json({ message: "missing required field comment" });
+        return res.send("missing required field comment");
       }
-      book.comments.push(comment);
-      book.commentcount++;
-      res.json(book);
+
+      try {
+        const result = await db
+          .collection("books")
+          .findOneAndUpdate(
+            { _id: ObjectId(id) },
+            { $push: { comments: comment } },
+            { returnOriginal: false }
+          );
+        if (!result.value) {
+          return res.send("no book exists");
+        }
+        res.json({
+          _id: result.value._id,
+          title: result.value.title,
+          comments: result.value.comments,
+        });
+      } catch (err) {
+        console.error(err);
+        res.status(500).send("Internal Server Error");
+      }
     })
-    .delete(function (req, res) {
-      let index = books.findIndex((b) => b._id === parseInt(req.params.id));
-      if (index === -1) {
-        return res.status(404).json({ message: "no book exists" });
+
+    .delete(async function (req, res) {
+      const { id } = req.params;
+      try {
+        const result = await db
+          .collection("books")
+          .deleteOne({ _id: ObjectId(id) });
+        if (result.deletedCount === 0) {
+          return res.send("no book exists");
+        }
+        res.send("delete successful");
+      } catch (err) {
+        console.error(err);
+        res.status(500).send("Internal Server Error");
       }
-      books.splice(index, 1);
-      res.json({ message: "delete successful" });
     });
 };
